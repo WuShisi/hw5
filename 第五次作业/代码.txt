@@ -1,0 +1,189 @@
+int main()
+{
+	Mat transImagetofreq(Mat p, Mat &freq);
+	double getER(Mat image, Mat p);
+	Mat my_freblur(Mat p, Mat Blur);
+	Mat GLPF(Mat scr, float d0);
+	Mat BLPF(Mat src, float d0, float n);
+	Mat GHPF(Mat scr, float d0, int flag, float k);
+	Mat BHPF(Mat scr, float d0, float n);
+	Mat Laplace(Mat scr);
+	Mat gray;	
+	Mat src;
+	Mat input= imread("C:\\Users\\Lenovo\\Desktop\\test3_corrupt.pgm");
+	cvtColor(input , gray, CV_BGR2GRAY);
+	int w = 2*getOptimalDFTSize(input.cols); 
+	int h = 2*getOptimalDFTSize(input.rows); 
+	copyMakeBorder(gray, src, 0, h - input.rows, 0, w - input.cols, BORDER_CONSTANT, Scalar::all(0)); 
+	src.convertTo(src, CV_32FC1); 
+	Mat fre;
+	Mat EN;
+	Mat Blur;
+	Mat q;
+	EN=transImagetofreq(src, fre);
+	normalize(EN, EN, 1, 0, CV_MINMAX);
+	cvNamedWindow("piu", 0);
+	cvNamedWindow("p", 0);
+	cvNamedWindow("o", 0);
+	cvNamedWindow("a", 0);
+	imshow("piu", input);
+	Blur = BHPF(src,20,2);
+	imshow("p", EN);
+	Mat result;
+	result= my_freblur(fre, Blur);
+	normalize(result, result, 1, 0, CV_MINMAX);
+	Rect rect(0, 0, input.rows, input.cols);
+	Mat result_roi = result(rect);
+	imshow("o", result_roi); 
+	Mat z = transImagetofreq(result, fre);
+	normalize(z, z, 1, 0, CV_MINMAX);
+	imshow("a", z);
+	cout<<getER(EN,z)<<endl;
+	cvWaitKey();
+
+}
+Mat transImagetofreq(Mat p, Mat &freq)
+{
+	for (int i = 0; i < p.rows; i++)
+	{
+		for (int j = 0; j < p.cols; j++)
+		{
+			p.at<float>(i, j) = p.at<float>(i, j)*pow(-1, i + j);
+		}
+	}
+	vector<Mat> temp(2);
+	Mat im = Mat::zeros(p.size(), CV_32FC1);
+	temp[0] = p;
+	temp[1]=im;
+	Mat complex;
+	merge(temp,complex);
+	dft(complex, complex);
+	split(complex, temp);
+	
+	merge(temp, freq);
+	Mat result;
+	magnitude(temp[0], temp[1], result);
+	result+= Scalar::all(1);  
+	log(result , result);   
+	normalize(result, result, 1, 0, CV_MINMAX);  
+	return result;
+}
+
+double getER(Mat image , Mat p)
+{
+
+	double wholeEN=0, D0EN=0;
+	for (int i = 0; i < image.rows; i++)
+	{
+		for (int j = 0; j < image.cols; j++)
+		{
+			wholeEN += image.at<float>(i, j);
+			D0EN += p .at<float>(i, j);
+		}
+	}
+	return D0EN / wholeEN;
+}
+
+
+
+
+Mat my_freblur(Mat p, Mat Blur)
+{
+	vector<Mat> freq(2);
+	vector<Mat> result(2);
+	Mat last;
+	split(p, freq);
+	Mat blur_r, blur_i, BLUR;
+	multiply(freq[0], Blur, blur_r);
+	multiply(freq[1], Blur, blur_i);
+	result[0]=blur_r;
+	result[1]=blur_i;
+	merge(result, BLUR);
+	idft(BLUR, BLUR);
+	split(BLUR, result);
+	magnitude(result [0], result[1], last); 
+	return last;
+	
+}
+
+
+Mat BLPF(Mat scr, float d0, float n)
+{
+	Mat butterworthBlur(scr.size(), CV_32FC1);
+	for (int i = 0; i < scr.rows; i++)
+	{
+		for (int j = 0; j < scr.cols; j++)
+		{
+			float d = pow(float(i - scr.rows / 2), 2) + pow(float(j - scr.cols / 2), 2);
+			butterworthBlur.at<float>(i, j) = 1 / (1 + pow((d / (d0*d0)), n));
+		}
+	}
+	return butterworthBlur;
+}
+
+
+Mat GLPF(Mat scr, float d0)
+{
+	Mat gaussianBlur(scr.size(), CV_32FC1);
+	for (int i = 0; i < scr.rows; i++)
+	{
+		for (int j = 0; j < scr.cols; j++)
+		{
+			float d = pow(float(i - scr.rows / 2), 2) + pow(float(j - scr.cols / 2), 2);
+			gaussianBlur.at<float>(i, j) = expf(-d /( 2*d0*d0));
+			//cout << gaussianBlur.at<float>(i, j);
+		}
+	}
+	return gaussianBlur;
+}
+
+
+
+
+Mat GHPF(Mat scr, float d0,int flag,float k)
+{
+	Mat gaussianBlur(scr.size(), CV_32FC1);
+	for (int i = 0; i < scr.rows; i++)
+	{
+		for (int j = 0; j < scr.cols; j++)
+		{
+			float d = pow(float(i - scr.rows / 2), 2) + pow(float(j - scr.cols / 2), 2);
+			if (flag == 0)
+			{
+				gaussianBlur.at<float>(i, j) = 1 - expf(-d / (2 * d0*d0));
+			}
+			if (flag == 1)
+			{
+				gaussianBlur.at<float>(i, j) = 1+(1 - expf(-d /( 2 * d0*d0)))*k;
+			}
+		}
+	}
+	return gaussianBlur;
+}
+Mat BHPF(Mat scr, float d0, float n)
+{
+	Mat butterworthBlur(scr.size(), CV_32FC1);
+	for (int i = 0; i < scr.rows; i++)
+	{
+		for (int j = 0; j < scr.cols; j++)
+		{
+			float d = pow(float(i - scr.rows / 2), 2) + pow(float(j - scr.cols / 2), 2);
+			butterworthBlur.at<float>(i, j) = 1 / (1 + pow((d0*d0/d),  n));
+		}
+	}
+	return butterworthBlur;
+}
+
+Mat Laplace(Mat scr)
+{
+	Mat laplaceBlur(scr.size(), CV_32FC1);
+	for (int i = 0; i < scr.rows; i++)
+	{
+		for (int j = 0; j < scr.cols; j++)
+		{
+			float d = pow(float(i - scr.rows / 2), 2) + pow(float(j - scr.cols / 2), 2);
+			laplaceBlur.at<float>(i, j) =-4 * pow(3.1415926, 2)*d;
+		}
+	}
+	return laplaceBlur;
+}
